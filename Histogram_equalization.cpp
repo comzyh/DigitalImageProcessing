@@ -2,7 +2,7 @@
 * @Author: Comzyh
 * @Date:   2015-03-30 01:47:36
 * @Last Modified by:   Comzyh
-* @Last Modified time: 2015-03-30 02:48:31
+* @Last Modified time: 2015-03-30 16:34:08
 */
 #include <cstdio>
 #include <cstring>
@@ -11,7 +11,7 @@
 using namespace std;
 int main(int argc, char const *argv[])
 {
-    char filename_in[256] = "Histogram_equalization_in.bmp";
+    char filename_in[256] = "DigitalImageProcessing_in.bmp";
     char filename_out[256] = "Histogram_equalization_out.bmp";
     if (argc >= 2)
         strcpy(filename_in, argv[1]);
