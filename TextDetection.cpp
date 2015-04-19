@@ -2,7 +2,7 @@
 * @Author: Comzyh
 * @Date:   2015-04-19 20:24:41
 * @Last Modified by:   Comzyh
-* @Last Modified time: 2015-04-20 02:35:11
+* @Last Modified time: 2015-04-20 04:59:48
 */
 
 #include <iostream>
@@ -58,10 +58,14 @@ struct ArrayBuffer: ArrayReader
         std::memset(image, val, sizeof(uint8_t) * height * width);
     }
 };
-inline int abs(int x)
-{
-    return x > 0 ? x : -x;
-}
+// inline int abs(int x)
+// {
+//     return x > 0 ? x : -x;
+// }
+// inline double abs(double x)
+// {
+//     return x > 0 ? x : -x;
+// }
 void Gaussian_filter(ArrayReader image_in, ArrayReader image_out)
 {
     static const int Gaussian[5][5] =
@@ -88,7 +92,8 @@ void Gaussian_filter(ArrayReader image_in, ArrayReader image_out)
         }
 }
 //索伯算子
-void Edge_Detection_Sobel(ArrayReader image_in, ArrayReader sobel_g, ArrayReader sobel_t)
+void Edge_Detection_Sobel(ArrayReader image_in, ArrayReader sobel_g, ArrayReader sobel_t,
+                          ArrayReader sobel_tt)
 {
     //本程序坐标,第一维增大方向为x,第二维增大方向为y
     static const int sobel_x[3][3] =
@@ -105,8 +110,10 @@ void Edge_Detection_Sobel(ArrayReader image_in, ArrayReader sobel_g, ArrayReader
     };
     const double pi_8 = PI / 8.0;
     const double pi_4 = PI / 4.0;
-    for (int x = 0; x < image_in.height - 3; x++)
-        for (int y = 0; y < image_in.width - 3; y ++)
+    const double pi_128 = PI / 128.0;
+    const double pi_256 = PI / 256.0;
+    for (int x = 0; x + 2 < image_in.height; x++)
+        for (int y = 0; y + 2 < image_in.width; y ++)
         {
             int gx = 0;
             int gy = 0;
@@ -116,20 +123,27 @@ void Edge_Detection_Sobel(ArrayReader image_in, ArrayReader sobel_g, ArrayReader
                     gx += sobel_x[i][j] * image_in[x + i][y + j];
                     gy += sobel_y[i][j] * image_in[x + i][y + j];
                 }
-            double t = atan2(gy, gx);
+            double tt, t;
+            tt = t = atan2(gy, gx);
             t += pi_8;
             if (t < 0)
                 t = 2 * PI + t;
             sobel_t[x + 1][y + 1] = ((int)(t / pi_4));
             // sobel_t[x + 1][y + 1] = min(255,sobel_t[x + 1][y + 1] * 64);
+
+            tt += pi_256;
+            if (tt < 0 )
+                tt = 2 * PI + tt;
+            sobel_tt[x + 1][y + 1] = ((int)(tt / pi_128));
+
             gx /= 8;
             gy /= 8;
             sobel_g[x + 1][y + 1] = min((uint8_t)255, (uint8_t)sqrt((double)gx * gx + (double)gy * gy));
         }
 }
-void Edge_Detection_Canny(ArrayReader image_in, ArrayReader image_out,double T_Low_ratio = 0.5,double T_High_ratio = 0.99999)
+void Edge_Detection_Canny(ArrayReader image_in, ArrayReader image_out, ArrayReader sobel_tt, double T_Low_ratio = 0.5, double T_High_ratio = 0.99999)
 {
-    ArrayBuffer gauss = ArrayBuffer(image_in.height, image_out.width);
+    ArrayBuffer gauss = ArrayBuffer(image_in.height, image_in.width);
     memset(image_out.image, 0, sizeof(uint8_t) * image_out.height * image_out.width);
     //setp-1 高斯滤镜
     Gaussian_filter(image_in, gauss);
@@ -143,7 +157,7 @@ void Edge_Detection_Canny(ArrayReader image_in, ArrayReader image_out,double T_L
     //3: x = -1, y = 1
 
     //setp-2 取梯度
-    Edge_Detection_Sobel(image_in, sobel_g, sobel_t);
+    Edge_Detection_Sobel(image_in, sobel_g, sobel_t, sobel_tt);
 
 
     //setp-3 非极大值抑制
@@ -153,10 +167,12 @@ void Edge_Detection_Canny(ArrayReader image_in, ArrayReader image_out,double T_L
         for (int y = 1; y + 1 < image_in.width; y++ )
         {
             int d = sobel_t[x][y];
+            // printf("x=%4d,y=%4d,d=%4d\n", x,y,d);
             if (sobel_g[x][y] > sobel_g[x + dx[d]][y + dy[d]] &&
                     sobel_g[x][y] > sobel_g[x - dx[d]][y - dy[d]])
                 suppressed[x][y] = sobel_g[x][y];
         }
+
 
     //setp-4 自适应双阈值增强(基于直方图)
     int histogram[256];
@@ -165,32 +181,140 @@ void Edge_Detection_Canny(ArrayReader image_in, ArrayReader image_out,double T_L
         for (int y = 0; y < image_in.width; y++ )
             histogram[suppressed[x][y]] ++;
     int all_histogram = image_in.height * image_in.width - histogram[0]; //不计入
-
     uint8_t T_Low = 0;
     uint8_t T_High = 0;
     int sum_histogram = 0;
     for (int i = 1; i < 256; i++)
     {
         sum_histogram += histogram[i];
-        if (T_Low == 00 && 1.0 * sum_histogram / all_histogram > T_Low_ratio)
+        if (T_Low == 0 && 1.0 * sum_histogram / all_histogram >= T_Low_ratio)
             T_Low = i;
         if (T_High == 0 && 1.0 * sum_histogram / all_histogram >= T_High_ratio)
             T_High = i;
         // printf("i=%4d,ratio=%lf\n", i, 1.0 * sum_histogram / all_histogram);
     }
+
     printf("T_Low=%4d, T_High=%4d\n", T_Low, T_High);
     uint8_t T_diff = T_High - T_Low;
     for (int x = 1; x + 1 < image_in.height; x++)
         for (int y = 1; y + 1 < image_in.width; y++ )
             if (suppressed[x][y] >= T_Low && suppressed[x][y] <= T_High)
+            {
+                int sum = 0;
+                for (int i = -1 ; i < 1; i++)
+                    for (int j = -1; j < 1; j++)
+                        sum += suppressed[x + i][y + j];
+                if (sum < T_High / 2)
+                    continue;
                 image_out[x][y] = min((uint8_t)255, (uint8_t)((suppressed[x][y] - T_Low) / (double)T_diff * 255));
+            }
     // memcpy(image_out.image, suppressed.image, sizeof(uint8_t)*image_in.height * image_in.width);
 
 }
+void StrokeWidthTransform(ArrayReader &canny, ArrayReader &sobel_tt, ArrayReader &image_out)
+{
+    const double pi_128 = PI / 128.0;
+    memset(image_out.image, 0xff, sizeof(uint8_t) * canny.height * canny.width);
+    for (int x = 1; x + 1 < canny.height; x++)
+        for (int y = 1; y + 1 < canny.width; y++)
+        {
+            if (!canny[x][y])
+                continue;
+            double tt = sobel_tt[x][y] * pi_128;
+            //由白指向黑,所以取负
+            double xx = -cos(tt);
+            double yy = -sin(tt);
+            const bool setp_x = (abs(xx) > abs(yy));
+            if (setp_x)
+            {
+                yy *= abs(1.0 / xx);
+                xx *= abs(1.0 / xx);
+            }
+            else
+            {
+                xx *= abs(1.0 / yy);
+                yy *= abs(1.0 / yy);
+            }
+            //布雷森汉姆直线算法
+            int tx = x;
+            int ty = y;
+            int px = -1, py = -1;
+            double error = 0;
+            while (tx >= 0 && ty >= 0 && tx < canny.height && ty < canny.width && abs(tx - x) + abs(ty - y) < 255)
+            {
+                if ((tx != x || ty != y) && canny[tx][ty])
+                {
+                    px = tx;
+                    py = ty;
+                    break;
+                }
+                if (setp_x)
+                {
+                    tx += xx > 0 ? 1 : -1;
+                    error += abs(yy);
+                    if (error > 0.5)
+                    {
+                        ty += yy > 0 ? 1 : -1;
+                        error -= 1.0;
+                    }
+                }
+                else
+                {
+                    ty += yy > 0 ? 1 : -1;
+                    error += abs(xx);
+                    if (error > 0.5)
+                    {
+                        tx += xx > 0 ? 1 : -1;
+                        error -= 1.0;
+                    }
+                }
+            }
+            if (px == -1 || py == -1)
+                continue;
+            int t_diff = max(sobel_tt[x][y], sobel_tt[px][py]) - min(sobel_tt[x][y], sobel_tt[px][py]);
+            if (t_diff > 128)
+                t_diff = 256 - t_diff;
+            if (t_diff <= 96) // 并非相对
+                continue;
+            uint8_t c = min(255, (int)sqrt((px - x) * (px - x) + (py - y) * (py - y)));
+            if (c > 20)
+                continue;
+            tx = x;
+            ty = y;
+            error = 0;
+            image_out[tx][ty] = c;
+            do
+            {
+                if (setp_x)
+                {
+                    tx += xx > 0 ? 1 : -1;
+                    error += abs(yy);
+                    if (error > 0.5)
+                    {
+                        ty += yy > 0 ? 1 : -1;
+                        error -= 1.0;
+                    }
+                }
+                else
+                {
+                    ty += yy > 0 ? 1 : -1;
+                    error += abs(xx);
+                    if (error > 0.5)
+                    {
+                        tx += xx > 0 ? 1 : -1;
+                        error -= 1.0;
+                    }
+                }
+                image_out[tx][ty] = c;
+            }
+            while (tx != px || ty != py);
+
+        }
+}
 int main(int argc, char const *argv[])
 {
-    char filename_in[256] = "Edge_Detection_in.bmp";
-    char filename_out[256] = "Edge_Detection_out.bmp";
+    char filename_in[256] = "TextDetection_small.bmp";
+    char filename_out[256] = "TextDetection_out.bmp";
     if (argc >= 2)
         strcpy(filename_in, argv[1]);
     if (argc >= 3)
@@ -208,10 +332,14 @@ int main(int argc, char const *argv[])
     ArrayReader image_in = ArrayReader(bmpinfo.biHeight, bmpinfo.biWidth, new uint8_t[bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8]);
     ArrayReader image_out = ArrayReader(bmpinfo.biHeight, bmpinfo.biWidth, new uint8_t[bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8]);
     fread(image_in.image, bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8, 1, file_in);
-    printf("height=%4d,width=%4d\n",image_in.height,image_in.width);
-    //EdgeDetection
-    Edge_Detection_Canny(image_in, image_out,0.5,1.0);
+    printf("height=%4d,width=%4d\n", image_in.height, image_in.width);
 
+    //EdgeDetection
+    ArrayBuffer canny = ArrayBuffer(image_in.height, image_in.width);
+    ArrayBuffer sobel_tt = ArrayBuffer(image_in.height, image_in.width);
+    Edge_Detection_Canny(image_in, canny, sobel_tt, 0.5, 1.0);
+    StrokeWidthTransform(canny, sobel_tt, image_out);
+    //
     //output
     fseek(file_out, 0L, 0);
     fseek(file_in, 0L, 0);

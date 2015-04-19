@@ -2,7 +2,7 @@
 * @Author: Comzyh
 * @Date:   2015-04-19 20:24:41
 * @Last Modified by:   Comzyh
-* @Last Modified time: 2015-04-20 00:45:28
+* @Last Modified time: 2015-04-20 02:25:34
 */
 //索伯算子
 #include <iostream>
@@ -71,8 +71,8 @@ void Edge_Detection_Sobel(ArrayReader image_in, ArrayReader sobel_g, ArrayReader
             t += pi_8;
             if (t < 0)
                 t = 2 * PI + t;
-            sobel_t[x + 1][y + 1] = ((int)(t / pi_4)) % 4;
-            // sobel_t[x + 1][y + 1] = min(255,sobel_t[x + 1][y + 1] * 64);
+            sobel_t[x + 1][y + 1] = ((int)(t / pi_4));
+            sobel_t[x + 1][y + 1] = min(255,sobel_t[x + 1][y + 1] * 32);
             gx /= 8;
             gy /= 8;
             sobel_g[x + 1][y + 1] = min((uint8_t)255, (uint8_t)sqrt((double)gx * gx + (double)gy * gy));
@@ -109,7 +109,7 @@ int main(int argc, char const *argv[])
     uint8_t *header = new uint8_t[bmp.bfOffBit];
     fread(header, bmp.bfOffBit, 1, file_in);
     fwrite(header, bmp.bfOffBit, 1, file_out);
-    fwrite(sobel_g.image, bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8, 1, file_out);
-    // fwrite(sobel_t.image, bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8, 1, file_out);
+    // fwrite(sobel_g.image, bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8, 1, file_out);
+    fwrite(sobel_t.image, bmpinfo.biHeight * bmpinfo.biWidth * bmpinfo.biBitCount / 8, 1, file_out);
     return 0;
 }
